@@ -15,6 +15,8 @@ public class Main {
     public static Scanner sc = new Scanner(System.in);
 
 	private static ListaInvertida listaInvertida = new ListaInvertida();
+	
+	private static int numOp;
     
     
     public static long buscaId (RandomAccessFile arq, long comeco, int idDesejada) { // retorna a posicao do registro com a id desejada no arquivo, antes do indicador de tamanho
@@ -57,8 +59,8 @@ public class Main {
 		}
     	return -1;
     }
-    
-    
+
+
 	public static Conta criar (RandomAccessFile arq, long comeco) {
 		String nomePessoa;
 		String[] email;
@@ -93,6 +95,11 @@ public class Main {
 		nomeUsuario = sc.nextLine();
 		System.out.println("Senha:");
 		senha = sc.nextLine();
+		try {
+			senha = OneTimePad.encryptionSenha(senha);
+		} catch (IOException e1) {
+			e1.printStackTrace();
+		}
 		System.out.println("CPF:");
 		cpf = sc.nextLine();
 		System.out.println("Cidade:");
@@ -232,6 +239,7 @@ public class Main {
 					nomeUsuario = arq.readUTF();
 					tamString = arq.readInt();
 					senha = arq.readUTF();
+					senha = OneTimePad.decryptionSenha(senha);
 					cpf = arq.readUTF();
 					tamString = arq.readInt();
 					cidade = arq.readUTF();
@@ -513,6 +521,7 @@ public class Main {
 			nomeUsuario = arq.readUTF();
 			tamString = arq.readInt();
 			senha = arq.readUTF();
+			senha = OneTimePad.decryptionSenha(senha);
 			cpf = arq.readUTF();
 			tamString = arq.readInt();
 			cidade = arq.readUTF();
@@ -627,6 +636,7 @@ public class Main {
 			nomeUsuario = sc.nextLine();
 			System.out.println("Senha:");
 			senha = sc.nextLine();
+			senha = OneTimePad.encryptionSenha(senha);
 			System.out.println("CPF:");
 			cpf = sc.nextLine();
 			System.out.println("Cidade:");
@@ -767,267 +777,8 @@ public class Main {
 		}
 	}
 	
-	
+			
 	public static void intercalacaoBalanceada (RandomAccessFile arq, long comeco) {
-		System.out.println("\n=== INTERCALAÇÃO BALANCEADA COMUM ===\n");
-		
-		int m, n; // m registros, n caminhos
-		int ultimaId;
-		int idAtual = 0;
-		int tamRegAtual;
-		long pos0, pos1, posBucketNovo;
-		Conta contatemp;
-		
-		System.out.println(" - Informe...\nNúmero de registros que cabem na memória:");
-		m = sc.nextInt();
-		sc.nextLine();
-		System.out.println("Número de caminhos:");
-		n = sc.nextInt();
-		sc.nextLine();
-		ArrayList<RandomAccessFile> arqTemp = new ArrayList<RandomAccessFile>();
-		List<Conta> memoria = new ArrayList<Conta>(m);
-		int [] ultimaId2 = new int [2*n];
-		
-		try {
-			arq.seek(comeco);
-			ultimaId = arq.readInt();
-			System.out.println("\nArquivo antes da ordenação:");
-			while(idAtual != ultimaId) { // imprime a ordem do arquivo antes da ordenacao
-				tamRegAtual = arq.readInt();
-				pos0 = arq.getFilePointer();
-				if(arq.readChar() != '*') {
-					idAtual = arq.readInt();
-					System.out.print(idAtual + " ");
-				}
-				arq.seek(pos0);
-				arq.skipBytes(tamRegAtual);
-			}
-			System.out.println("");
-			
-			for(int i=0; i<2*n; i++) { // inicia os RandomAccesFiles dos arquivos temporarios
-				arqTemp.add(new RandomAccessFile("dados/arqTemp" + i + ".db", "rw"));
-				arqTemp.get(i).writeInt(-1); // escreve -1 como sendo a ultima id
-			}
-			
-			arq.seek(comeco);
-			ultimaId = arq.readInt();
-			idAtual = 0;
-			
-			for(int i=0; idAtual != ultimaId; i++){ // faz a distribuicao
-				// carrega a memoria com os dados
-				while(memoria.size()<m && idAtual != ultimaId) { // carrega os m registros na memoria
-					tamRegAtual = arq.readInt();
-					pos1 = arq.getFilePointer();
-					if(arq.readChar()!='*') {
-						arq.seek(pos1);
-						contatemp = leRegistro(arq, comeco, pos1);
-						memoria.add(contatemp);
-						idAtual = contatemp.getIdConta();
-					} else {
-						arq.seek(pos1);
-						arq.skipBytes(tamRegAtual);
-					}
-				}
-				
-				for(Conta k : memoria) { // teste
-					System.out.print(k.getIdConta());
-				}
-				
-				memoria.sort(Comparator.comparing(Conta::getIdConta)); // ordena a memoria
-				
-				for(Conta k : memoria) { // teste
-					System.out.print(k.getIdConta());
-				}
-				System.out.println(memoria.size());
-				
-				if(arqTemp.get(i%n).length() == 0) { // se o arquivo for vazio, escreve -1 como a ultima id
-					arqTemp.get(i%n).seek(comeco);
-					arqTemp.get(i%n).writeInt(-1);
-					posBucketNovo = arqTemp.get(i%n).getFilePointer(); // salva a posicao atual
-					System.out.println("arquivo vazio"); // teste
-				} else {
-					posBucketNovo = arqTemp.get(i%n).getFilePointer(); // salva a posicao atual
-					arqTemp.get(i%n).seek(comeco); // navega ate o comeco do arquivo temporario para gravar qual foi a ultima id
-					arqTemp.get(i%n).writeInt(memoria.get(memoria.size()-1).getIdConta()); // salva qual eh a ultima id na memoria
-					arqTemp.get(i%n).seek(posBucketNovo); // navega ate a posicao do comeco do bloco atual
-				}
-				for(Conta contaTemp : memoria) { // grava os registros da memoria no arquivo temporario
-					System.out.println("escreveu registro " + contaTemp.getIdConta()); // teste
-					arqTemp.get(i%n).seek(comeco);
-					arqTemp.get(i%n).writeInt(contaTemp.getIdConta()); // escreve a ultima id
-					ultimaId2[i%n] = contaTemp.getIdConta();
-					arqTemp.get(i%n).seek(posBucketNovo);
-					escreveRegistro(arqTemp.get(i%n), posBucketNovo, contaTemp);
-					posBucketNovo = arqTemp.get(i%n).getFilePointer();
-				}
-				
-				memoria.clear(); // limpa a memoria
-				
-				System.out.println("Arquivo " + i%n + ":"); // teste
-				System.out.println("ultimaid " + ultimaId); // teste
-				imprimeArquivo(arqTemp.get(i%n), comeco); // teste
-			}
-			
-			// faz a intercalacao
-			boolean arquivoOrdenado = false;
-			int tamSegOrd = m;
-			int ordem = 0;
-			Conta contaTemp;
-			long [] pos = new long [2*n];
-			int saiuDaFita;
-			int menor;
-			int fitaAtual; // tem valor de 0 a n representando a fita %n do primeiro ou segundo grupo de fitas
-			Conta[] memoria2 = new Conta [n];
-			int [] posicaoBloco = new int [n];
-			boolean chegouNoFinal = false;
-			int fitaDeSaida = n;
-			int segundoMenor;
-			idAtual = 0;
-			
-			
-			for(int j=0; j<n; j++) { // zera a posicaoBloco
-				posicaoBloco[j] = 0;
-			}
-			for(int j=0; j<n*2; j++) { // coloca o pos no comeco do arquivo
-				arqTemp.get(j).seek(comeco);
-				arqTemp.get(j).readInt();
-				pos[j] = arqTemp.get(j).getFilePointer();
-			}
-			
-			tamRegAtual = arqTemp.get(0).readInt();
-			contaTemp = leRegistro(arqTemp.get(0), comeco, pos[0]); // le o primeiro registro
-			memoria2[0] = contaTemp;
-			menor = contaTemp.getIdConta();
-			segundoMenor = 2147483647;
-			saiuDaFita = 0;
-			//posicaoBloco[0] += 1;
-			fitaAtual = 0;
-			for(int j=1; j<n; j++) { // para cada fita le o primeiro registro
-				tamRegAtual = arqTemp.get((ordem%2)*n + j).readInt();
-				contaTemp = leRegistro(arqTemp.get((ordem%2)*n + j), comeco, pos[(ordem%2)*n + j]); // le o registro no ponteiro atual
-				memoria2[j] = contaTemp;
-				System.out.println("leu registro " + contaTemp.getIdConta()); // teste
-				if(memoria2[j].getIdConta() < menor) { // se o valor atual for o menor grava ele como o menor
-					segundoMenor = menor;
-					menor = memoria2[j].getIdConta();
-					saiuDaFita = j;
-				}
-				//posicaoBloco[j] += 1;
-			}
-			
-			// escreve o menor na fita de saida
-			arqTemp.get(fitaDeSaida).seek(comeco);
-			arqTemp.get(fitaDeSaida).writeInt(memoria2[saiuDaFita].getIdConta()); // escreve a ultima id
-			System.out.println(arqTemp.get((ordem%2)*n + saiuDaFita).getFilePointer() + "\n(ordem%2)*n + saiuDaFita = " + ((ordem%2)*n + saiuDaFita)); // teste
-			escreveRegistro(arqTemp.get(fitaDeSaida), arqTemp.get(fitaDeSaida).getFilePointer(), memoria2[saiuDaFita]); // escreve o registro
-			pos[fitaDeSaida] = arqTemp.get(fitaDeSaida).getFilePointer(); // salva a posicao atual do registro no ponteiro
-			posicaoBloco[saiuDaFita] += 1;
-			
-			for(int i=0; i<n; i++) {
-				System.out.println("memoria2[" + i + "].idConta = " + memoria2[i].getIdConta()); // teste
-				if(memoria2[i].getIdConta() < segundoMenor && memoria2[i].getIdConta() > menor) {
-					segundoMenor = memoria2[i].getIdConta();
-					System.out.println("gravou segundoMenor = " + segundoMenor); // teste
-				}
-			}
-			System.out.println("menor: " + menor + " segundoMenor: " + segundoMenor); // teste
-			menor = segundoMenor;
-			
-			// PRIMEIRA INTERCALACAO
-			// repete enquanto nao chegou no final do bloco
-			while(!chegouNoFinal){
-				System.out.println("posicaoBloco[" + fitaAtual + "] = " + posicaoBloco[fitaAtual]); // teste
-				System.out.println("menor: " + menor + " segundoMenor: " + segundoMenor); // teste
-				if(posicaoBloco[fitaAtual] < tamSegOrd){
-					if(fitaAtual == saiuDaFita) { // le o proximo da fita atual se foi a fita que conteve o menor
-						arqTemp.get((ordem%2)*n + fitaAtual).seek(pos[(ordem%2)*n + fitaAtual]);
-						tamRegAtual = arqTemp.get((ordem%2)*n + fitaAtual).readInt();
-						System.out.println("tentou ler o registro no arquivo " + ((ordem%2)*n + fitaAtual)); // teste
-						contaTemp = leRegistro(arqTemp.get((ordem%2)*n + fitaAtual), comeco, pos[(ordem%2)*n + fitaAtual]); // le o registro no ponteiro atual
-						memoria2[fitaAtual] = contaTemp;
-						pos[(ordem%2)*n + fitaAtual] = arqTemp.get((ordem%2)*n + fitaAtual).getFilePointer();
-					}
-					
-					System.out.println("chegou aqui, menor " + menor + " idconta " + memoria2[fitaAtual].getIdConta()); // teste
-					// checa se ele eh o menor
-					if(memoria2[fitaAtual].getIdConta() <= menor) { // se o valor atual for o menor
-						System.out.println("chegou depois do if"); // teste
-						menor = memoria2[fitaAtual].getIdConta(); // salva o valor
-						saiuDaFita = fitaAtual; // salva a fita que ele saiu
-						
-						// escreve o menor na fita de saida
-						arqTemp.get(fitaDeSaida).seek(comeco);
-						arqTemp.get(fitaDeSaida).writeInt(memoria2[saiuDaFita].getIdConta()); // escreve a ultima id
-						arqTemp.get(fitaDeSaida).seek(pos[fitaDeSaida]);
-						ultimaId2[fitaDeSaida] = memoria2[saiuDaFita].getIdConta();
-						System.out.println("tentou escrever o registro no arquivo " + fitaDeSaida); // teste
-						escreveRegistro(arqTemp.get(fitaDeSaida), pos[fitaDeSaida], memoria2[saiuDaFita]); // escreve o registro
-						System.out.println("chegou depois do escreve registro"); // teste
-						pos[fitaDeSaida] = arqTemp.get(fitaDeSaida).getFilePointer(); // salva a posicao atual do registro no ponteiro
-						idAtual = memoria2[saiuDaFita].getIdConta();
-						System.out.println("Arquivo de saida " + fitaDeSaida + ": (depois de escrever o registro " + memoria2[saiuDaFita].getIdConta());// teste
-						imprimeArquivo(arqTemp.get(fitaDeSaida), comeco); // teste
-						
-						// sobe o valor da posicaoBloco da fita do menor
-						System.out.println("ESCREVEU registro " + memoria2[saiuDaFita].getIdConta() + ", subiu posicaoBloco[" + fitaAtual + "] de " + posicaoBloco[fitaAtual] + " para " + (posicaoBloco[fitaAtual]+1)); // teste
-						posicaoBloco[fitaAtual] += 1;
-						menor = segundoMenor;
-					}
-					
-					System.out.println("Arquivo de saida " + fitaDeSaida + ":");// teste
-					imprimeArquivo(arqTemp.get(fitaDeSaida), comeco); // teste
-				}
-				
-				fitaAtual = (fitaAtual+1) % n;
-				
-				chegouNoFinal = true;
-				for(int i=0; i<n; i++) { // checa se todos os posicaoBloco chegaram no final do bloco
-					if(posicaoBloco[i]<tamSegOrd && idAtual != ultimaId2[(ordem%2)*n + i]) {
-						chegouNoFinal = false;
-					}
-					System.out.println("CHECAGEM SE CHEGOU NO FINAL\nposicaoBloco[" + i + "] = " + posicaoBloco[i] + "\nidAtual = " + idAtual + "\nultimaId2[" + ((ordem%2)*n + i) + "] = " + ultimaId2[(ordem%2)*n + i]); // teste
-				}
-			}
-			
-			System.out.println("---INTERCALOU---");
-			for(int i=0; i<n*2; i++) {
-				System.out.println("Arquivo " + i + ":");
-				//System.out.println("ultimaid " + ultimaId); // teste
-				imprimeArquivo(arqTemp.get(i), comeco);
-			}
-			
-			
-			
-			
-			
-			
-			/*
-			while(!arquivoOrdenado) { // enquanto o arquivo nao estiver ordenado, continua fazendo a intercalacao
-				for(int i=0; i<tamSegOrd; i++) { // intercala do tamanho do segmento ordenado atual
-					
-					
-					
-					for(int j=0; j<n; j++) { // para cada fita
-						contaTemp = leRegistro(arqTemp.get((ordem%2)*n + j), comeco, pos[(ordem%2)*n + j]); // le o registro no ponteiro atual
-						memoria.add(contaTemp); // adiciona a memoria
-					}
-					
-					if(posicaoBloco[k] < n) { // se o bloco atual nao tiver chegado ao final
-						if(memoria2[k].getIdConta() < menor) { // se o valor atual for o menor
-							menor = memoria2[k].getIdConta();
-							saiuDaFita = k;
-						}
-						posicaoBloco[saiuDaFita] += 1;
-					}
-				}
-			}*/
-		} catch (IOException e) {
-			System.out.println(e.getMessage());
-		}
-	}
-	
-	
-	public static void intercalacaoBalanceada2 (RandomAccessFile arq, long comeco) {
 		try {
 			System.out.println("\n=== INTERCALAÇÃO BALANCEADA COMUM ===\n");
 			
@@ -2894,6 +2645,7 @@ public class Main {
 			// para cada registro no arquivo
 			while(idAtual != ultimaId) {
 				boolean achou = false;
+				numOp = 0;
 				
 				// le o registro
 				int tamReg = arq.readInt(); // tamanho do registro
@@ -2944,6 +2696,7 @@ public class Main {
 			}
 			
 			// imprime as contas encontradas
+			System.out.println("\nOperações realizadas: " + numOp);
 			if(contasEncontradas.size() > 0) {
 				System.out.println("\nTexto encontrado nas contas:");
 				for(Integer p : contasEncontradas) {
@@ -3022,6 +2775,8 @@ public class Main {
 				if((resultadoAtual & ((long) 1 << (63 - (padrao.length() - 1)))) == ((long) 1 << (63 - (padrao.length() - 1)))) {
 					encontrou = true;
 				}
+				
+				numOp++;
 			}
 			
 			return encontrou;
@@ -3081,7 +2836,7 @@ public class Main {
 	    				deletar(arq, comeco);
 	    				break;
 	    			case "6":
-	    				intercalacaoBalanceada2(arq, comeco);
+	    				intercalacaoBalanceada(arq, comeco);
 	    				break;
 	    			case "7":
 	    				criaHash(arq, comeco);
